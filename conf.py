@@ -234,7 +234,14 @@ CREATE_MONTHLY_ARCHIVE = True
 # And then do a backup, or run `nikola ping` from the `ping`
 # plugin (`nikola install_plugin ping`).
 # To do manual deployment, set it to []
-# DEPLOY_COMMANDS = []
+DEPLOY_COMMANDS = [
+    "git checkout -b stage",
+    "git add output",
+    "git commit -am _",
+    "git push origin `git subtree split --prefix output/ stage`:master --force",
+    "git checkout develop",
+    "git branch -D stage",
+]
 
 # Where the output site should be located
 # If you don't use an absolute path, it will be considered as relative
