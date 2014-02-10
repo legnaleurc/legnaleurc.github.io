@@ -50,7 +50,7 @@
 
 噢, 講得有點遠了. 這裡的真正問題是: 如果 parent 的 thread 和 child 不一樣會發生什麼事?
 
-唔, 會發生很多事, 但絕對都不是好事. 一個很明顯的問題是回收機制不再安全. 你永遠不應該直接操作不同 thread 上的 `QObject`. 如果你使用的是 QRunnable 就更要小心: `QRunnable::run()` 是跑在不同的 thread 上!
+唔, 會發生很多事, 但絕對都不是好事. 一個很明顯的問題是回收機制不再安全. 你永遠不應該直接操作不同 thread 上的 `QObject`. 如果你使用的是 `QRunnable` 就更要小心: `QRunnable::run()` 是跑在不同的 thread 上!
 
 ### QObject::deleteLater()
 
@@ -116,7 +116,7 @@ void QSharedDataPointer::detach () {
 }
 ```
 
-Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 QString, QByteArray 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.
+Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 `QString`, `QByteArray` 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.
 
 看起來很完美, 但事情總有例外: 如果物件洩漏了內部的成員, 比方說 container 很常見的 `T & operator []`, 那麼 `detach()` 會被輕易地繞過:
 
@@ -128,7 +128,7 @@ c = 'a';
 assert(b == "hello");
 ```
 
-QString 避免這問題的方法是, 讓 non-const `operator []` 回傳一個特別的物件, 其型別為 `QCharRef`, 在內容修改時為 `QString` 呼叫 `detach()`. 但其他的 template container 就沒辦法如法炮製了, 上述問題依然存在. 相較之下 gcc 的解法就比較優雅一些, 它的計數器多了一種狀態: leaked, 呼叫 non-const `operator []` 之後計數器的狀態會是 leaked, 下次的複製就一定會是完整複製.
+`QString` 避免這問題的方法是, 讓 non-const `operator []` 回傳一個特別的物件, 其型別為 `QCharRef`, 在內容修改時為 `QString` 呼叫 `detach()`. 但其他的 template container 就沒辦法如法炮製了, 上述問題依然存在. 相較之下 gcc 的解法就比較優雅一些, 它的計數器多了一種狀態: leaked, 呼叫 non-const `operator []` 之後計數器的狀態會是 leaked, 下次的複製就一定會是完整複製.
 
 如果對 `QSharedDataPointer` 的自動化有疑慮, `QExplicitlySharedDataPointer` 即是為此存在. 它不會為你自動呼叫 `detach()`, 你必須自行分辨使用時機.
 
