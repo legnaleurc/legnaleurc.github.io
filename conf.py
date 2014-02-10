@@ -235,12 +235,13 @@ CREATE_MONTHLY_ARCHIVE = True
 # plugin (`nikola install_plugin ping`).
 # To do manual deployment, set it to []
 DEPLOY_COMMANDS = [
-    "git checkout -b stage",
+    "git checkout _",
+    "git merge develop",
+    "nikola build",
     "git add output",
     "git commit -am _",
-    "git push origin `git subtree split --prefix output/ stage`:master --force",
+    "git subtree push -P output origin _:master",
     "git checkout develop",
-    "git branch -D stage",
 ]
 
 # Where the output site should be located
