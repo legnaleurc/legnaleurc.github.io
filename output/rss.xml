@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>「　」</title><link>http://legnaleurc.github.io/</link><description>へんじがない、ただのしかばねのようだ</description><atom:link href="http://legnaleurc.github.io/rss.xml" type="application/rss+xml" rel="self"></atom:link><language>en</language><lastBuildDate>Mon, 10 Feb 2014 23:38:23 GMT</lastBuildDate><generator>Nikola &lt;http://getnikola.com/&gt;</generator><docs>http://blogs.law.harvard.edu/tech/rss</docs><item><title>Garbage Collection (3)</title><link>http://legnaleurc.github.io/posts/garbage-collection-3.html</link><description>&lt;div&gt;&lt;p&gt;上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;Smart Pointers&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;QPointer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QSharedPointer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QWeakPointer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QScopedPointer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QScopedArrayPointer&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Based on QObject&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;parent-child relation&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QObject::deleteLater()&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Copy On Write&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;QSharedData&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QSharedDataPointer&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;QExplicitlySharedDataPointer&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Smart Pointers&lt;/h3&gt;
+&lt;p&gt;用途基本上跟 STL, Boost 版本差不多, 但細部設計方針有些許不同; 例如 Qt 的版本都提供 raw pointer 的隱式轉換.&lt;/p&gt;
+&lt;p&gt;不同的 library 在這方面經常會有點出入, 像 Loki 的 smart pointer 就不使用成員函式, 一律使用全域函式對 smart pointer 本身操作.&lt;/p&gt;
+&lt;p&gt;由於用法都差不多, 本篇也不贄述, 請自行參閱相關文件.&lt;/p&gt;
+&lt;h3&gt;QObject&lt;/h3&gt;
+&lt;p&gt;如果類別是一個 &lt;code&gt;QObject&lt;/code&gt;, 就適用這些方式.&lt;/p&gt;
+&lt;h4&gt;Parent-Child relation&lt;/h4&gt;
+&lt;p&gt;&lt;code&gt;QObject&lt;/code&gt; 之間有 parent-child 關係, 你可以在 constructor 指定 parent, 該物件就會自動成為 child. Parent 在回收時會負責回收所有的 children, 因此 &lt;code&gt;QObject&lt;/code&gt; 物件之間會是樹狀圖, 只要記得回收根部就可以回收整個體系.&lt;/p&gt;
+&lt;p&gt;這種回收方式又特別適合 &lt;code&gt;QWidget&lt;/code&gt; 這種 GUI 類別, 因為它們很少出現環狀參用, 且有很明確的 composition 關係. 仔細回想一下 Qt 的範例是否都是在 main 建立一個 GUI 實體, 該實體所擁有的各種元件都只使用 new 無 delete? 就是因為有這種回收機制存在.&lt;/p&gt;
+&lt;p&gt;但這 parent-child 關係其實存在某種限制. 起因在 &lt;code&gt;QObject&lt;/code&gt; 擁有與 event loop 溝通的能力, 其中一個特性就是它有 thread affinity. 講白話一點就是每個 &lt;code&gt;QObject&lt;/code&gt; 都屬於某個 thread, 這樣在 &lt;code&gt;QObject&lt;/code&gt; 發 signals 的時候, event loop 才知道這事件是來自哪一個 thread, 有沒有必要丟進 queue 裡分派等等.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;QObject&lt;/code&gt; 屬於哪個 thread, 是看建立該物件時處在哪個 thread 上. 建立完成的實體也可以用 &lt;code&gt;QObject::moveToThread()&lt;/code&gt; 丟到其他 thread 上; 注意, &lt;strong&gt;只能「推」, 不能「拉」&lt;/strong&gt;, 因為你並不知道別的 thread 目前執行到哪裡, 自然也不能任意修改物件.&lt;/p&gt;
+&lt;p&gt;噢, 講得有點遠了. 這裡的真正問題是: 如果 parent 的 thread 和 child 不一樣會發生什麼事?&lt;/p&gt;
+&lt;p&gt;唔, 會發生很多事, 但絕對都不是好事. 一個很明顯的問題是回收機制不再安全. 你永遠不應該直接操作不同 thread 上的 &lt;code&gt;QObject&lt;/code&gt;. 如果你使用的是 &lt;code&gt;QRunnable&lt;/code&gt; 就更要小心: &lt;code&gt;QRunnable::run()&lt;/code&gt; 是跑在不同的 thread 上!&lt;/p&gt;
+&lt;h4&gt;QObject::deleteLater()&lt;/h4&gt;
+&lt;p&gt;當你呼叫了 &lt;code&gt;QObject::deleteLater()&lt;/code&gt; 後, 該 QObject 並不會立刻回收, 而是通知 event queue 請它之後幫你回收. 它具有幾個特性:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;多次呼叫不會重覆回收&lt;/li&gt;
+&lt;li&gt;保證 thread-safe, 它會在自己的 thread 回收&lt;/li&gt;
+&lt;li&gt;它是 slot&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;最後一點即是它和 smart pointer 的不同處: smart pointer 是依賴 variable scope 觸發, 而 &lt;code&gt;QObject::deleteLater()&lt;/code&gt; 則可以交由特定事件觸發回收.&lt;/p&gt;
+&lt;p&gt;基本上只要需要手動回收通常都建議使用 &lt;code&gt;QObject::deleteLater()&lt;/code&gt;.&lt;/p&gt;
+&lt;h3&gt;copy-on-write&lt;/h3&gt;
+&lt;p&gt;說到 copy-on-write, 請恕我先離題一下, 來談談常見的字串複製行為.&lt;/p&gt;
+&lt;h4&gt;Mutable String&lt;/h4&gt;
+&lt;p&gt;某些字串內部實作使用的是 mutable string, 即 string 的內容可以改變, 複製時也要複製一份全新的複本. 但如果你其實不會修改這字串, 那完整複製這複本就是很多餘的事了. 以字串的使用情況來說更為極端: 要嘛你會一直修改字串, 要嘛你根本不會修改它. C++ 有 const reference 和 rvalue reference 解決這些問題, 而其他語言則大多採用 immutable string.&lt;/p&gt;
+&lt;h4&gt;Immutable String&lt;/h4&gt;
+&lt;p&gt;Immutable string 在建立之後內容就不會再被更改了, 所有需要修改內容的操作都是回傳一個新的複本. 很多常見的語言使用的都是 immutable string.&lt;/p&gt;
+&lt;p&gt;由於內容不變, 複製時可以直接共用同一塊空間, 也不需要考慮同步問題, 可說是非常高效的作法. 但相對來說, 修改字串的成本就變大了, 比方說字串連續串接, 過程中會一直產生立即被丟掉的暫時字串. 因此使用 immutable string 的語言通常也會提供工具讓你先在 buffer 內處理字串內容, 再一次生成結果字串, 例如 Java 的 StringBuilder 或是 Python 的 cStringIO 等.&lt;/p&gt;
+&lt;h4&gt;Copy On Write&lt;/h4&gt;
+&lt;p&gt;好啦, 扯這麼遠終於又回到 copy-on-write 啦. COW 基本上是在 mutable 和 immutable 之間取平衡點: 在複製時它先共用同一塊記憶體, 等到第一次要修改時才真正地複製一份完整的複本出來. 這看起來似乎解決了所有的問題.&lt;/p&gt;
+&lt;p&gt;事情當然是不會那麼美好, COW 的其中一個問題是, 所謂&lt;em&gt;修改&lt;/em&gt;語意在程式語言裡很難精確地表達. 在 C++, 一個可能的做法是把所有 non-const 的成員函式呼叫都視為修改, 這正是 &lt;code&gt;QSharedDataPointer&lt;/code&gt; 採用的方針.&lt;/p&gt;
+&lt;p&gt;先談談 Qt 如何透過 &lt;code&gt;QSharedData&lt;/code&gt; 以及 pimpl idiom 讓你輕易實作 COW. 架構大致上會像這樣:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;Employee&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="nl"&gt;public:&lt;/span&gt;
+    &lt;span class="n"&gt;Employee&lt;/span&gt; &lt;span class="p"&gt;();&lt;/span&gt;
+    &lt;span class="c1"&gt;// other member functions&lt;/span&gt;
+&lt;span class="nl"&gt;private:&lt;/span&gt;
+    &lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;Data&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;QSharedDataPointer&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Data&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;};&lt;/span&gt;
+
+&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;Employee&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;Data&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="n"&gt;QSharedData&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="nl"&gt;public:&lt;/span&gt;
+    &lt;span class="n"&gt;Data&lt;/span&gt; &lt;span class="p"&gt;();&lt;/span&gt;
+    &lt;span class="n"&gt;Data&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;const&lt;/span&gt; &lt;span class="n"&gt;Data&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="c1"&gt;// other member variables&lt;/span&gt;
+&lt;span class="p"&gt;};&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;code&gt;QSharedData&lt;/code&gt; 不只提供型別標記, 也提供一個 thread-safe 的計數器. &lt;code&gt;QSharedDataPointer&lt;/code&gt; 就跟一般的 smart pointer 一樣提供 operator-&amp;gt; 的重載, 只是 non-const 版本會自動呼叫 &lt;code&gt;QSharedDataPointer::detach()&lt;/code&gt;. &lt;code&gt;detach()&lt;/code&gt; 的內容大致上像這樣(已簡化):&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;QSharedDataPointer&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;detach&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="k"&gt;if&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt; &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;rc&lt;/span&gt; &lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="mi"&gt;1&lt;/span&gt; &lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="n"&gt;Data&lt;/span&gt; &lt;span class="o"&gt;*&lt;/span&gt; &lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;Type&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="o"&gt;*&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+        &lt;span class="o"&gt;--&lt;/span&gt;&lt;span class="n"&gt;d&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;rc&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 &lt;code&gt;QString&lt;/code&gt;, &lt;code&gt;QByteArray&lt;/code&gt; 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.&lt;/p&gt;
+&lt;p&gt;看起來很完美, 但事情總有例外: 如果物件洩漏了內部的成員, 比方說 container 很常見的 &lt;code&gt;T &amp;amp; operator []&lt;/code&gt;, 那麼 &lt;code&gt;detach()&lt;/code&gt; 會被輕易地繞過:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="n"&gt;String&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;"hello"&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+&lt;span class="n"&gt;Char&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="o"&gt;];&lt;/span&gt;
+&lt;span class="n"&gt;String&lt;/span&gt; &lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+&lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="sc"&gt;'a'&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
+&lt;span class="k"&gt;assert&lt;/span&gt;&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="n"&gt;b&lt;/span&gt; &lt;span class="o"&gt;==&lt;/span&gt; &lt;span class="s"&gt;"hello"&lt;/span&gt;&lt;span class="o"&gt;);&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;code&gt;QString&lt;/code&gt; 避免這問題的方法是, 讓 non-const &lt;code&gt;operator []&lt;/code&gt; 回傳一個特別的物件, 其型別為 &lt;code&gt;QCharRef&lt;/code&gt;, 在內容修改時為 &lt;code&gt;QString&lt;/code&gt; 呼叫 &lt;code&gt;detach()&lt;/code&gt;. 但其他的 template container 就沒辦法如法炮製了, 上述問題依然存在. 相較之下 gcc 的解法就比較優雅一些, 它的計數器多了一種狀態: leaked, 呼叫 non-const &lt;code&gt;operator []&lt;/code&gt; 之後計數器的狀態會是 leaked, 下次的複製就一定會是完整複製.&lt;/p&gt;
+&lt;p&gt;如果對 &lt;code&gt;QSharedDataPointer&lt;/code&gt; 的自動化有疑慮, &lt;code&gt;QExplicitlySharedDataPointer&lt;/code&gt; 即是為此存在. 它不會為你自動呼叫 &lt;code&gt;detach()&lt;/code&gt;, 你必須自行分辨使用時機.&lt;/p&gt;
+&lt;h3&gt;Summary&lt;/h3&gt;
+&lt;p&gt;Qt 原本就設計了兩種回收機制, 全都基於 &lt;code&gt;QObject&lt;/code&gt; 運作, 並和 multi-thread 與 event-loop 有緊密的結合. 而為了解決各家 compiler 對新的 C++ 標準支援不一的問題, 提供了常見的數種 smart pointers; 當然, 它們與 Qt-style STL 一樣, 用不用隨你.&lt;/p&gt;&lt;/div&gt;</description><guid>http://legnaleurc.github.io/posts/garbage-collection-3.html</guid><pubDate>Sat, 08 Feb 2014 00:40:30 GMT</pubDate></item><item><title>Garbage Collection (2)</title><link>http://legnaleurc.github.io/posts/garbage-collection-2.html</link><description>&lt;div&gt;&lt;p&gt;上一篇提到了 reference counting 以及 weak reference. 這篇我將以 C++11 的 smart pointer 為骨幹做介紹, 但核心概念都是差不多的.&lt;/p&gt;
+&lt;p&gt;C++11 引入了一系列的 smart pointer, 使用 RAII (Resource Acquisition Is Initialization) 手法來確保資源在生命週期結束後的回收行為.&lt;/p&gt;
+&lt;p&gt;想法非常簡單: 配置在 stack 上的變數, 在離開 scope 後一定會呼叫 destructor, 因此只要設計一系列的容器, 讓它們在 destructor 裡做回收行為, 就可以讓編譯器為我們回收資源. 而 C++11 的 smart pointer 並不只是自動化的 new/delete 容器, 由於其 allocator/deleter 可自訂, programmer 實際上可用它來管理任何種類的資源.&lt;/p&gt;
+&lt;h3&gt;Strong Reference&lt;/h3&gt;
+&lt;p&gt;在 C++ 裡: &lt;code&gt;std::shared_ptr&lt;/code&gt; 即是使用 strong reference, 也是最常被用到的 smart pointer. 用法如下:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;sp&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="n"&gt;sp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;                        &lt;span class="c1"&gt;// get raw pointer&lt;/span&gt;
+&lt;span class="n"&gt;sp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;reset&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;                      &lt;span class="c1"&gt;// ref count -1, set to null pointer&lt;/span&gt;
+&lt;span class="n"&gt;sp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;reset&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;            &lt;span class="c1"&gt;// manage another pointer&lt;/span&gt;
+&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;sp2&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;sp&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt; &lt;span class="c1"&gt;// ref count +1&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;用同一個 pointer 建立兩個不同的 &lt;code&gt;std::shared_ptr&lt;/code&gt; 是錯誤用法, 會造成一次以上的回收:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="n"&gt;Object&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;sp1&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;sp2&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;o&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt; &lt;span class="c1"&gt;// bad&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Weak Reference&lt;/h3&gt;
+&lt;p&gt;在 C++11, weak reference 對應的 smart pointer 是 &lt;code&gt;std::weak_ptr&lt;/code&gt;. 前篇提到了 weak reference 可以用來解決 cyclic reference, 那麼是怎麼做到的呢? 很簡單, 因為 weak reference 不參與 reference counting, 也就是說它的生成, 複製, 銷毀都不會影響計數器, 自然也不會做任何回收的動作.
+那麼為什麼我們需要 weak reference, 而不是簡單地用 raw pointer 呢? 差別就在 weak reference 雖然不參與 reference counting, 但它仍然知道該 pointer 目前的計數器資訊, 這讓它可以確認資源是否已被回收, 並在需要時暫時轉換為 strong reference. 這在多緒環境時尤其重要:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="nf"&gt;thread1&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="c1"&gt;// ...&lt;/span&gt;
+    &lt;span class="c1"&gt;// sp is a std::shared_ptr&lt;/span&gt;
+    &lt;span class="n"&gt;sp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;reset&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt; &lt;span class="c1"&gt;// (1)&lt;/span&gt;
+    &lt;span class="c1"&gt;// ...&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="nf"&gt;thread2&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="c1"&gt;// ...&lt;/span&gt;
+    &lt;span class="c1"&gt;// wp is a std::weak_ptr&lt;/span&gt;
+    &lt;span class="n"&gt;wp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="c1"&gt;// (2)&lt;/span&gt;
+    &lt;span class="c1"&gt;// ...&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;如果 &lt;code&gt;std::weak_ptr&lt;/code&gt; 跟 &lt;code&gt;std::shared_ptr&lt;/code&gt; 一樣只用 &lt;code&gt;get()&lt;/code&gt; 取得 raw pointer, 那麼在上述的例子中, (1) 如果觸發了回收, 那麼 (2) 拿到的 pointer 就會因而腐敗. 因此 &lt;code&gt;std::weak_ptr&lt;/code&gt; 必須要使用 &lt;code&gt;lock()&lt;/code&gt; 函式取得一個 &lt;code&gt;std::shared_ptr&lt;/code&gt;, 讓計數器暫時不歸零, 就可以避免這個狀況:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;sp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;wp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="n"&gt;lock&lt;/span&gt;&lt;span class="p"&gt;();&lt;/span&gt;
+    &lt;span class="c1"&gt;// counter will not be 0 in this scope&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Strong Reference From This&lt;/h3&gt;
+&lt;p&gt;考慮以下的二元樹節點實作:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;Node&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="nl"&gt;public:&lt;/span&gt;
+    &lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;setParent&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;weak_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;p&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;setLeft&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;l&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;setParent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;setRight&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;setParent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="p"&gt;));&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="nl"&gt;private:&lt;/span&gt;
+    &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;weak_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;p&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;l&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;};&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;以上的程式片段犯了大忌: 直接使用 this 建立 &lt;code&gt;std::shared_ptr&lt;/code&gt;, 導致離開該函式後會讓計數器馬上歸零, this 被意外地 delete.
+由於我們的確需要取得目前正在管理 this 的 &lt;code&gt;std::shared_ptr&lt;/code&gt;, 這時我們需要使用 &lt;code&gt;std::enable_shared_from_this&lt;/code&gt;. 繼承自 &lt;code&gt;std::enable_shared_from_this&lt;/code&gt; 的類別, 可以使用 &lt;code&gt;shared_from_this()&lt;/code&gt; 函式取得管理 this 的 &lt;code&gt;std::shared_ptr&lt;/code&gt;. 實作原理基本上是儲存一個 &lt;code&gt;std::weak_ptr&lt;/code&gt;, 外部建立 &lt;code&gt;std::shared_ptr&lt;/code&gt; 時更新這個 &lt;code&gt;std::weak_ptr&lt;/code&gt;, 呼叫 &lt;code&gt;shared_from_this()&lt;/code&gt; 時再轉換回 &lt;code&gt;std::shared_ptr&lt;/code&gt;. 用法如下:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="k"&gt;class&lt;/span&gt; &lt;span class="nc"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;:&lt;/span&gt; &lt;span class="k"&gt;public&lt;/span&gt; &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;enable_shared_from_this&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+&lt;span class="nl"&gt;public:&lt;/span&gt;
+    &lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;setParent&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;weak_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;p&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;setLeft&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;l&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;setParent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;shared_from_this&lt;/span&gt;&lt;span class="p"&gt;());&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+    &lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="n"&gt;setRight&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;r&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+        &lt;span class="n"&gt;n&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;setParent&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;this&lt;/span&gt;&lt;span class="o"&gt;-&amp;gt;&lt;/span&gt;&lt;span class="n"&gt;shared_from_this&lt;/span&gt;&lt;span class="p"&gt;());&lt;/span&gt;
+    &lt;span class="p"&gt;}&lt;/span&gt;
+&lt;span class="nl"&gt;private:&lt;/span&gt;
+    &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;weak_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;p&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+    &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;shared_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Node&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;l&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;r&lt;/span&gt;&lt;span class="p"&gt;;&lt;/span&gt;
+&lt;span class="p"&gt;};&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;h3&gt;Unique Reference&lt;/h3&gt;
+&lt;p&gt;在特殊情況下, 可能會需要確保同一時間只有一個物件有擁有權, 這時候 &lt;code&gt;std::unique_ptr&lt;/code&gt; 就派上用場了. &lt;code&gt;std::unique_ptr&lt;/code&gt; 是 &lt;code&gt;std::auto_ptr&lt;/code&gt; 的改良版本. &lt;code&gt;std::auto_ptr&lt;/code&gt; 的複製行為是「摧毀式複製」, 發生複製時會轉移資源的擁有權, 這使得它無法被用於標準容器, 並且在作為參數傳入函式時, 會意外地被轉移擁有權, 並在函式結束時觸發回收:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="nf"&gt;f1&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;auto_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="k"&gt;new&lt;/span&gt; &lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="c1"&gt;// ownership moved into f2&lt;/span&gt;
+    &lt;span class="n"&gt;f2&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+
+&lt;span class="kt"&gt;void&lt;/span&gt; &lt;span class="nf"&gt;f2&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;std&lt;/span&gt;&lt;span class="o"&gt;::&lt;/span&gt;&lt;span class="n"&gt;auto_ptr&lt;/span&gt;&lt;span class="o"&gt;&amp;lt;&lt;/span&gt;&lt;span class="n"&gt;Object&lt;/span&gt;&lt;span class="o"&gt;&amp;gt;&lt;/span&gt; &lt;span class="n"&gt;b&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="c1"&gt;// destructs b and delete pointee&lt;/span&gt;
+&lt;span class="p"&gt;}&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;&lt;code&gt;std::unique_ptr&lt;/code&gt; 改良了這點, 它不具有 copy 語意, 但具有 move 語意. 需要複製時必須要明確使用 &lt;code&gt;std::move&lt;/code&gt; 轉移擁有權.&lt;/p&gt;&lt;/div&gt;</description><guid>http://legnaleurc.github.io/posts/garbage-collection-2.html</guid><pubDate>Thu, 02 Aug 2012 20:08:22 GMT</pubDate></item><item><title>Garbage Collection (1)</title><link>http://legnaleurc.github.io/posts/garbage-collection-1.html</link><description>&lt;div&gt;&lt;p&gt;這篇只是介紹比較知名的方法，預計之後還會再發一兩篇討論 C++/Qt 的回收手法。&lt;/p&gt;
+&lt;h3&gt;Reference Counting&lt;/h3&gt;
+&lt;p&gt;C/C++ 裡最常被使用的方式, 也有部分 GC 演算法會混合 reference counting. 其原理是每個物件都有一個計數器, 記錄目前有多少其他物件指向它. 第一次建立時計數器是 1, 每次複製時計數器加 1, 每少一個物件指向它就減 1, 如果計數器降到 0 就代表此物件不需要存在, 這時它會被刪除. 圖解如下:&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="https://lh4.googleusercontent.com/-NWnj-veDuxc/UALDHo-fpSI/AAAAAAAAAi8/DDOY0h2KqxM/s800/rc1.PNG"&gt;&lt;/p&gt;
+&lt;p&gt;但 reference counting 有一個重大的缺點, 就是在有 cyclic reference 的狀況下, 它無法回收物件. 圖例:&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="https://lh3.googleusercontent.com/-y-Ek_yWpUNM/UALE5Pp89yI/AAAAAAAAAjU/smqBu3rT010/s800/rc3.PNG"&gt;&lt;/p&gt;
+&lt;p&gt;變數 c 若因為某些原因而需要持有 b (比方說要保存 parent-child 關係), 就形成了 cyclic reference, 此時就算變數 a 不再指向它們, 但因為計數器不會歸零, 它們永遠無法被回收. 圖例:&lt;/p&gt;
+&lt;p&gt;&lt;img alt="" src="https://lh4.googleusercontent.com/-wqBg5DlOsX4/UALE5Nl9CAI/AAAAAAAAAjQ/rfllXgIcrrA/s800/rc2.PNG"&gt;&lt;/p&gt;
+&lt;p&gt;要解決這個問題可以使用 weak reference counting (後述), 但因為它的使用方式與 strong reference counting 不同, programmer 必須要自行檢查是否會造成 cyclic reference, 再視情況改用 weak reference. 然而很多時候 cyclic reference 是很難被發現的, 對 programmer 來說是一項不小的負擔.&lt;/p&gt;
+&lt;h3&gt;JavaScript&lt;/h3&gt;
+&lt;p&gt;JavaScript 的 closure 常會意外地造成 cyclic reference, 以下是其中一個簡單的例子:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="nb"&gt;window&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;onload&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kd"&gt;function&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+    &lt;span class="kd"&gt;var&lt;/span&gt; &lt;span class="nx"&gt;tmp&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="nb"&gt;document&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;getElementById&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;'...'&lt;/span&gt;&lt;span class="p"&gt;);&lt;/span&gt;
+    &lt;span class="nx"&gt;tmp&lt;/span&gt;&lt;span class="p"&gt;.&lt;/span&gt;&lt;span class="nx"&gt;onclick&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="kd"&gt;function&lt;/span&gt; &lt;span class="p"&gt;()&lt;/span&gt; &lt;span class="p"&gt;{&lt;/span&gt;
+        &lt;span class="c1"&gt;// tmp may reference here because closure&lt;/span&gt;
+    &lt;span class="p"&gt;};&lt;/span&gt;
+&lt;span class="p"&gt;};&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;通常在 DOM event handler 中經常會出現這種寫法, 畢竟如果不使用 closure, 寫法會變得很不自然. 所幸目前大部分的 JavaScript engine 都已經使用 mark and sweep (後述), 基本上也不太需要過於擔心這問題 ... 除了早期的 IE 以外(講明一點, 在 Windows XP 上的 IE 版本似乎都還在用 reference counting).&lt;/p&gt;
+&lt;h3&gt;Mark and Sweep&lt;/h3&gt;
+&lt;p&gt;近代的 GC 有許多都是以 mark and sweep 為主，再混合一點變型(如 Python 也有用上 reference counting). Mark and sweep 的想法也很簡單: 首先走訪目前存在的所有變數, 把碰得到的物件標記起來，此為 mark; 接著檢查所有物件, 把剛剛沒被標記的物件回收, 有被標記的物件清除標記以供下回使用, 此為 sweep. 寫成演算法即:&lt;/p&gt;
+&lt;div class="code"&gt;&lt;pre&gt;&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;mark&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;variables&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;v&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;variables&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;v&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;marked&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="n"&gt;v&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;marked&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;True&lt;/span&gt;
+            &lt;span class="n"&gt;mark&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;v&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;children&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;sweep&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;objects&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;objects&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;marked&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="n"&gt;o&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;marked&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="bp"&gt;False&lt;/span&gt;
+        &lt;span class="k"&gt;else&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="k"&gt;del&lt;/span&gt; &lt;span class="n"&gt;o&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;由於 mark and sweep 是直接走訪所有的變數及物件, 不像 reference counting 只知道 parent-child 的關係, 因此它不受 cyclic reference 的影響. 但也因此, C/C++ 很難直接原生支援, 因為它經常需要在 memory pool 上再做一些額外處理. 另外，在 mark and sweep 執行時, 為了 thread safety, 通常會先暫停所有的 thread, 這對效能可能是另一項衝擊.&lt;/p&gt;
+&lt;p&gt;就算有 VM 可以幫 programmer 做資源回收, 但「資源」並不只限於 heap. 對於 sockets, IO devices, shared memory 等外部資源, VM 還是無法完全幫 programmer 監視所有資源的使用, 因此 client 還是有必要手動呼叫回收函式(如 close(), release() 等).&lt;/p&gt;&lt;/div&gt;</description><guid>http://legnaleurc.github.io/posts/garbage-collection-1.html</guid><pubDate>Sun, 15 Jul 2012 13:41:12 GMT</pubDate></item></channel></rss>
