@@ -11,20 +11,18 @@
 上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:
 
 * Smart Pointers
-    * `QPointer`
-    * `QSharedPointer`
-    * `QWeakPointer`
-    * `QScopedPointer`
-    * `QScopedArrayPointer`
-
+    - `QPointer`
+    - `QSharedPointer`
+    - `QWeakPointer`
+    - `QScopedPointer`
+    - `QScopedArrayPointer`
 * Based on QObject
-    * parent-child relation
-    * `QObject::deleteLater()`
-
+    - parent-child relation
+    - `QObject::deleteLater()`
 * Copy On Write
-    * `QSharedData`
-    * `QSharedDataPointer`
-    * `QExplicitlySharedDataPointer`
+    - `QSharedData`
+    - `QSharedDataPointer`
+    - `QExplicitlySharedDataPointer`
 
 ## Smart Pointers
 
@@ -116,7 +114,7 @@ void QSharedDataPointer::detach () {
 }
 ```
 
-Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 `QString`, `QByteArray` 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.
+Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 `QString`, `QByteArray` 以及所有的 template container. 而 gcc 的 `std::string` 實作也採用 COW.
 
 看起來很完美, 但事情總有例外: 如果物件洩漏了內部的成員, 比方說 container 很常見的 `T & operator []`, 那麼 `detach()` 會被輕易地繞過:
 

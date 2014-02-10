@@ -95,9 +95,7 @@
         <div class="body">
             <div><p>上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:</p>
 <ul>
-<li>
-<p>Smart Pointers</p>
-<ul>
+<li>Smart Pointers<ul>
 <li><code>QPointer</code></li>
 <li><code>QSharedPointer</code></li>
 <li><code>QWeakPointer</code></li>
@@ -105,16 +103,12 @@
 <li><code>QScopedArrayPointer</code></li>
 </ul>
 </li>
-<li>
-<p>Based on QObject</p>
-<ul>
+<li>Based on QObject<ul>
 <li>parent-child relation</li>
 <li><code>QObject::deleteLater()</code></li>
 </ul>
 </li>
-<li>
-<p>Copy On Write</p>
-<ul>
+<li>Copy On Write<ul>
 <li><code>QSharedData</code></li>
 <li><code>QSharedDataPointer</code></li>
 <li><code>QExplicitlySharedDataPointer</code></li>
@@ -183,7 +177,7 @@
 </pre></div>
 
 
-<p>Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 <code>QString</code>, <code>QByteArray</code> 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.</p>
+<p>Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 <code>QString</code>, <code>QByteArray</code> 以及所有的 template container. 而 gcc 的 <code>std::string</code> 實作也採用 COW.</p>
 <p>看起來很完美, 但事情總有例外: 如果物件洩漏了內部的成員, 比方說 container 很常見的 <code>T &amp; operator []</code>, 那麼 <code>detach()</code> 會被輕易地繞過:</p>
 <div class="code"><pre><span class="n">String</span> <span class="n">a</span> <span class="o">=</span> <span class="s">"hello"</span><span class="o">;</span>
 <span class="n">Char</span> <span class="o">&amp;</span> <span class="n">c</span> <span class="o">=</span> <span class="n">a</span><span class="o">[</span><span class="mi">0</span><span class="o">];</span>
