@@ -243,7 +243,7 @@ DEPLOY_COMMANDS = [
     "git commit -am _",
     "git push origin _:_",
     "git subtree split -P output -b tmp",
-    "git push origin tmp:master"
+    "git push origin tmp:master",
     "git checkout develop",
     "git branch -D tmp",
 ]
