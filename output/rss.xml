@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>「　」</title><link>http://legnaleurc.github.io/</link><description>へんじがない、ただのしかばねのようだ</description><atom:link href="http://legnaleurc.github.io/rss.xml" type="application/rss+xml" rel="self"></atom:link><language>en</language><lastBuildDate>Mon, 10 Feb 2014 23:38:23 GMT</lastBuildDate><generator>Nikola &lt;http://getnikola.com/&gt;</generator><docs>http://blogs.law.harvard.edu/tech/rss</docs><item><title>Garbage Collection (3)</title><link>http://legnaleurc.github.io/posts/garbage-collection-3.html</link><description>&lt;div&gt;&lt;p&gt;上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:&lt;/p&gt;
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>「　」</title><link>http://legnaleurc.github.io/</link><description>へんじがない、ただのしかばねのようだ</description><atom:link href="http://legnaleurc.github.io/rss.xml" type="application/rss+xml" rel="self"></atom:link><language>en</language><lastBuildDate>Tue, 11 Feb 2014 03:13:48 GMT</lastBuildDate><generator>Nikola &lt;http://getnikola.com/&gt;</generator><docs>http://blogs.law.harvard.edu/tech/rss</docs><item><title>Garbage Collection (3)</title><link>http://legnaleurc.github.io/posts/garbage-collection-3.html</link><description>&lt;div&gt;&lt;p&gt;上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;
-&lt;p&gt;Smart Pointers&lt;/p&gt;
-&lt;ul&gt;
+&lt;li&gt;Smart Pointers&lt;ul&gt;
 &lt;li&gt;&lt;code&gt;QPointer&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;QSharedPointer&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;QWeakPointer&lt;/code&gt;&lt;/li&gt;
@@ -11,16 +9,12 @@
 &lt;li&gt;&lt;code&gt;QScopedArrayPointer&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;Based on QObject&lt;/p&gt;
-&lt;ul&gt;
+&lt;li&gt;Based on QObject&lt;ul&gt;
 &lt;li&gt;parent-child relation&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;QObject::deleteLater()&lt;/code&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;Copy On Write&lt;/p&gt;
-&lt;ul&gt;
+&lt;li&gt;Copy On Write&lt;ul&gt;
 &lt;li&gt;&lt;code&gt;QSharedData&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;QSharedDataPointer&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;QExplicitlySharedDataPointer&lt;/code&gt;&lt;/li&gt;
@@ -89,7 +83,7 @@
 &lt;/pre&gt;&lt;/div&gt;
 
 
-&lt;p&gt;Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 &lt;code&gt;QString&lt;/code&gt;, &lt;code&gt;QByteArray&lt;/code&gt; 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.&lt;/p&gt;
+&lt;p&gt;Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 &lt;code&gt;QString&lt;/code&gt;, &lt;code&gt;QByteArray&lt;/code&gt; 以及所有的 template container. 而 gcc 的 &lt;code&gt;std::string&lt;/code&gt; 實作也採用 COW.&lt;/p&gt;
 &lt;p&gt;看起來很完美, 但事情總有例外: 如果物件洩漏了內部的成員, 比方說 container 很常見的 &lt;code&gt;T &amp;amp; operator []&lt;/code&gt;, 那麼 &lt;code&gt;detach()&lt;/code&gt; 會被輕易地繞過:&lt;/p&gt;
 &lt;div class="code"&gt;&lt;pre&gt;&lt;span class="n"&gt;String&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="s"&gt;"hello"&lt;/span&gt;&lt;span class="o"&gt;;&lt;/span&gt;
 &lt;span class="n"&gt;Char&lt;/span&gt; &lt;span class="o"&gt;&amp;amp;&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;a&lt;/span&gt;&lt;span class="o"&gt;[&lt;/span&gt;&lt;span class="mi"&gt;0&lt;/span&gt;&lt;span class="o"&gt;];&lt;/span&gt;
