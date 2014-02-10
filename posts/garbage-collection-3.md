@@ -11,20 +11,18 @@
 上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:
 
 * Smart Pointers
-    * `QPointer`
-    * `QSharedPointer`
-    * `QWeakPointer`
-    * `QScopedPointer`
-    * `QScopedArrayPointer`
-
+    - `QPointer`
+    - `QSharedPointer`
+    - `QWeakPointer`
+    - `QScopedPointer`
+    - `QScopedArrayPointer`
 * Based on QObject
-    * parent-child relation
-    * `QObject::deleteLater()`
-
+    - parent-child relation
+    - `QObject::deleteLater()`
 * Copy On Write
-    * `QSharedData`
-    * `QSharedDataPointer`
-    * `QExplicitlySharedDataPointer`
+    - `QSharedData`
+    - `QSharedDataPointer`
+    - `QExplicitlySharedDataPointer`
 
 ## Smart Pointers
 
