@@ -1,0 +1,465 @@
+<!DOCTYPE html><html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <meta name="description" content="へんじがない、ただのしかばねのようだ">
+    <meta name="author" content="Wei-Cheng Pan">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>「　」 | 「　」</title>
+    
+    
+        
+            <link href="assets/css/all-nocdn.css" rel="stylesheet" type="text/css">
+        
+    
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js" type="text/javascript"></script>
+    <![endif]-->
+    
+        
+            <link rel="alternate" type="application/rss+xml" title="RSS" href="rss.xml">
+        
+    
+    
+
+    
+    
+    
+</head>
+
+<body>
+    <section class="social">
+        <ul>
+        
+    
+        
+            <li><a href="." title="Home"><i class="icon-home"></i></a></li>
+        
+    
+        
+            <li><a href="archive.html" title="Archives"><i class="icon-folder-open-alt"></i></a></li>
+        
+    
+        
+            <li><a href="categories/index.html" title="Tags"><i class="icon-tags"></i></a></li>
+        
+    
+        
+            <li><a href="rss.xml" title="RSS"><i class="icon-rss"></i></a></li>
+        
+    
+        
+            <li><a href="http://about.me/legnaleurc" title="About me"><i class="icon-user"></i></a></li>
+        
+    
+        
+            <li><a href="https://twitter.com/__CA__" title="My Twitter"><i class="icon-twitter"></i></a></li>
+        
+    
+        
+            <li><a href="https://github.com/legnaleurc" title="My Github"><i class="icon-github"></i></a></li>
+        
+    
+
+        </ul>
+    </section>
+    <section class="page-content">
+        <div class="content" rel="main">
+            
+    
+        <div class="post">
+            <h1 class="title"><a href="posts/garbage-collection-3.html">Garbage Collection (3)</a></h1>
+            <div class="meta">
+                <div class="authordate">
+                    <time class="timeago" datetime="2014-02-08T08:40:30+08:00">2014-02-08 08:40</time>
+                </div>
+                <div class="stats">
+                
+                    
+    
+        
+    <p>
+    
+        <a href="posts/garbage-collection-3.html#disqus_thread" data-disqus-identifier="cache/posts/garbage-collection-3.html">Comments</a>
+    
+
+    
+
+                
+                </p></div>
+                
+    
+
+            </div>
+            <div class="body">
+                <div><p>上一次談到了 C++11 的 smart pointer, 這次來談談 Qt. 在 Qt 你可以使用的工具有:</p>
+<ul>
+<li>
+<p>Smart Pointers</p>
+<ul>
+<li><code>QPointer</code></li>
+<li><code>QSharedPointer</code></li>
+<li><code>QWeakPointer</code></li>
+<li><code>QScopedPointer</code></li>
+<li><code>QScopedArrayPointer</code></li>
+</ul>
+</li>
+<li>
+<p>Based on QObject</p>
+<ul>
+<li>parent-child relation</li>
+<li><code>QObject::deleteLater()</code></li>
+</ul>
+</li>
+<li>
+<p>Copy On Write</p>
+<ul>
+<li><code>QSharedData</code></li>
+<li><code>QSharedDataPointer</code></li>
+<li><code>QExplicitlySharedDataPointer</code></li>
+</ul>
+</li>
+</ul>
+<h3>Smart Pointers</h3>
+<p>用途基本上跟 STL, Boost 版本差不多, 但細部設計方針有些許不同; 例如 Qt 的版本都提供 raw pointer 的隱式轉換.</p>
+<p>不同的 library 在這方面經常會有點出入, 像 Loki 的 smart pointer 就不使用成員函式, 一律使用全域函式對 smart pointer 本身操作.</p>
+<p>由於用法都差不多, 本篇也不贄述, 請自行參閱相關文件.</p>
+<h3>QObject</h3>
+<p>如果類別是一個 <code>QObject</code>, 就適用這些方式.</p>
+<h4>Parent-Child relation</h4>
+<p><code>QObject</code> 之間有 parent-child 關係, 你可以在 constructor 指定 parent, 該物件就會自動成為 child. Parent 在回收時會負責回收所有的 children, 因此 <code>QObject</code> 物件之間會是樹狀圖, 只要記得回收根部就可以回收整個體系.</p>
+<p>這種回收方式又特別適合 <code>QWidget</code> 這種 GUI 類別, 因為它們很少出現環狀參用, 且有很明確的 composition 關係. 仔細回想一下 Qt 的範例是否都是在 main 建立一個 GUI 實體, 該實體所擁有的各種元件都只使用 new 無 delete? 就是因為有這種回收機制存在.</p>
+<p>但這 parent-child 關係其實存在某種限制. 起因在 <code>QObject</code> 擁有與 event loop 溝通的能力, 其中一個特性就是它有 thread affinity. 講白話一點就是每個 <code>QObject</code> 都屬於某個 thread, 這樣在 <code>QObject</code> 發 signals 的時候, event loop 才知道這事件是來自哪一個 thread, 有沒有必要丟進 queue 裡分派等等.</p>
+<p><code>QObject</code> 屬於哪個 thread, 是看建立該物件時處在哪個 thread 上. 建立完成的實體也可以用 <code>QObject::moveToThread()</code> 丟到其他 thread 上; 注意, <strong>只能「推」, 不能「拉」</strong>, 因為你並不知道別的 thread 目前執行到哪裡, 自然也不能任意修改物件.</p>
+<p>噢, 講得有點遠了. 這裡的真正問題是: 如果 parent 的 thread 和 child 不一樣會發生什麼事?</p>
+<p>唔, 會發生很多事, 但絕對都不是好事. 一個很明顯的問題是回收機制不再安全. 你永遠不應該直接操作不同 thread 上的 <code>QObject</code>. 如果你使用的是 <code>QRunnable</code> 就更要小心: <code>QRunnable::run()</code> 是跑在不同的 thread 上!</p>
+<h4>QObject::deleteLater()</h4>
+<p>當你呼叫了 <code>QObject::deleteLater()</code> 後, 該 QObject 並不會立刻回收, 而是通知 event queue 請它之後幫你回收. 它具有幾個特性:</p>
+<ul>
+<li>多次呼叫不會重覆回收</li>
+<li>保證 thread-safe, 它會在自己的 thread 回收</li>
+<li>它是 slot</li>
+</ul>
+<p>最後一點即是它和 smart pointer 的不同處: smart pointer 是依賴 variable scope 觸發, 而 <code>QObject::deleteLater()</code> 則可以交由特定事件觸發回收.</p>
+<p>基本上只要需要手動回收通常都建議使用 <code>QObject::deleteLater()</code>.</p>
+<h3>copy-on-write</h3>
+<p>說到 copy-on-write, 請恕我先離題一下, 來談談常見的字串複製行為.</p>
+<h4>Mutable String</h4>
+<p>某些字串內部實作使用的是 mutable string, 即 string 的內容可以改變, 複製時也要複製一份全新的複本. 但如果你其實不會修改這字串, 那完整複製這複本就是很多餘的事了. 以字串的使用情況來說更為極端: 要嘛你會一直修改字串, 要嘛你根本不會修改它. C++ 有 const reference 和 rvalue reference 解決這些問題, 而其他語言則大多採用 immutable string.</p>
+<h4>Immutable String</h4>
+<p>Immutable string 在建立之後內容就不會再被更改了, 所有需要修改內容的操作都是回傳一個新的複本. 很多常見的語言使用的都是 immutable string.</p>
+<p>由於內容不變, 複製時可以直接共用同一塊空間, 也不需要考慮同步問題, 可說是非常高效的作法. 但相對來說, 修改字串的成本就變大了, 比方說字串連續串接, 過程中會一直產生立即被丟掉的暫時字串. 因此使用 immutable string 的語言通常也會提供工具讓你先在 buffer 內處理字串內容, 再一次生成結果字串, 例如 Java 的 StringBuilder 或是 Python 的 cStringIO 等.</p>
+<h4>Copy On Write</h4>
+<p>好啦, 扯這麼遠終於又回到 copy-on-write 啦. COW 基本上是在 mutable 和 immutable 之間取平衡點: 在複製時它先共用同一塊記憶體, 等到第一次要修改時才真正地複製一份完整的複本出來. 這看起來似乎解決了所有的問題.</p>
+<p>事情當然是不會那麼美好, COW 的其中一個問題是, 所謂<em>修改</em>語意在程式語言裡很難精確地表達. 在 C++, 一個可能的做法是把所有 non-const 的成員函式呼叫都視為修改, 這正是 <code>QSharedDataPointer</code> 採用的方針.</p>
+<p>先談談 Qt 如何透過 <code>QSharedData</code> 以及 pimpl idiom 讓你輕易實作 COW. 架構大致上會像這樣:</p>
+<div class="code"><pre><span class="k">class</span> <span class="nc">Employee</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="n">Employee</span> <span class="p">();</span>
+    <span class="c1">// other member functions</span>
+<span class="nl">private:</span>
+    <span class="k">class</span> <span class="nc">Data</span><span class="p">;</span>
+    <span class="n">QSharedDataPointer</span><span class="o">&lt;</span><span class="n">Data</span><span class="o">&gt;</span> <span class="n">d</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">class</span> <span class="nc">Employee</span><span class="o">::</span><span class="n">Data</span><span class="o">:</span> <span class="k">public</span> <span class="n">QSharedData</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="n">Data</span> <span class="p">();</span>
+    <span class="n">Data</span> <span class="p">(</span><span class="k">const</span> <span class="n">Data</span> <span class="o">&amp;</span><span class="p">);</span>
+    <span class="c1">// other member variables</span>
+<span class="p">};</span>
+</pre></div>
+
+
+<p><code>QSharedData</code> 不只提供型別標記, 也提供一個 thread-safe 的計數器. <code>QSharedDataPointer</code> 就跟一般的 smart pointer 一樣提供 operator-&gt; 的重載, 只是 non-const 版本會自動呼叫 <code>QSharedDataPointer::detach()</code>. <code>detach()</code> 的內容大致上像這樣(已簡化):</p>
+<div class="code"><pre><span class="kt">void</span> <span class="n">QSharedDataPointer</span><span class="o">::</span><span class="n">detach</span> <span class="p">()</span> <span class="p">{</span>
+    <span class="k">if</span><span class="p">(</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">rc</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="p">)</span> <span class="p">{</span>
+        <span class="n">Data</span> <span class="o">*</span> <span class="n">d</span> <span class="o">=</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">d</span><span class="p">;</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">d</span> <span class="o">=</span> <span class="n">Type</span><span class="p">(</span><span class="o">*</span><span class="n">d</span><span class="p">);</span>
+        <span class="o">--</span><span class="n">d</span><span class="o">-&gt;</span><span class="n">rc</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>Qt 的大部分具有 value 語意的 classes 都實作了 implicit-sharing, 如 <code>QString</code>, <code>QByteArray</code> 以及所有的 template container. 而 gcc 的 std::string 實作也採用 COW.</p>
+<p>看起來很完美, 但事情總有例外: 如果物件洩漏了內部的成員, 比方說 container 很常見的 <code>T &amp; operator []</code>, 那麼 <code>detach()</code> 會被輕易地繞過:</p>
+<div class="code"><pre><span class="n">String</span> <span class="n">a</span> <span class="o">=</span> <span class="s">"hello"</span><span class="o">;</span>
+<span class="n">Char</span> <span class="o">&amp;</span> <span class="n">c</span> <span class="o">=</span> <span class="n">a</span><span class="o">[</span><span class="mi">0</span><span class="o">];</span>
+<span class="n">String</span> <span class="n">b</span> <span class="o">=</span> <span class="n">a</span><span class="o">;</span>
+<span class="n">c</span> <span class="o">=</span> <span class="sc">'a'</span><span class="o">;</span>
+<span class="k">assert</span><span class="o">(</span><span class="n">b</span> <span class="o">==</span> <span class="s">"hello"</span><span class="o">);</span>
+</pre></div>
+
+
+<p><code>QString</code> 避免這問題的方法是, 讓 non-const <code>operator []</code> 回傳一個特別的物件, 其型別為 <code>QCharRef</code>, 在內容修改時為 <code>QString</code> 呼叫 <code>detach()</code>. 但其他的 template container 就沒辦法如法炮製了, 上述問題依然存在. 相較之下 gcc 的解法就比較優雅一些, 它的計數器多了一種狀態: leaked, 呼叫 non-const <code>operator []</code> 之後計數器的狀態會是 leaked, 下次的複製就一定會是完整複製.</p>
+<p>如果對 <code>QSharedDataPointer</code> 的自動化有疑慮, <code>QExplicitlySharedDataPointer</code> 即是為此存在. 它不會為你自動呼叫 <code>detach()</code>, 你必須自行分辨使用時機.</p>
+<h3>Summary</h3>
+<p>Qt 原本就設計了兩種回收機制, 全都基於 <code>QObject</code> 運作, 並和 multi-thread 與 event-loop 有緊密的結合. 而為了解決各家 compiler 對新的 C++ 標準支援不一的問題, 提供了常見的數種 smart pointers; 當然, 它們與 Qt-style STL 一樣, 用不用隨你.</p></div>
+            </div>
+        </div>
+    
+        <div class="post">
+            <h1 class="title"><a href="posts/garbage-collection-2.html">Garbage Collection (2)</a></h1>
+            <div class="meta">
+                <div class="authordate">
+                    <time class="timeago" datetime="2012-08-03T04:08:22+08:00">2012-08-03 04:08</time>
+                </div>
+                <div class="stats">
+                
+                    
+    
+        
+    <p>
+    
+        <a href="posts/garbage-collection-2.html#disqus_thread" data-disqus-identifier="cache/posts/garbage-collection-2.html">Comments</a>
+    
+
+    
+
+                
+                </p></div>
+                
+    
+
+            </div>
+            <div class="body">
+                <div><p>上一篇提到了 reference counting 以及 weak reference. 這篇我將以 C++11 的 smart pointer 為骨幹做介紹, 但核心概念都是差不多的.</p>
+<p>C++11 引入了一系列的 smart pointer, 使用 RAII (Resource Acquisition Is Initialization) 手法來確保資源在生命週期結束後的回收行為.</p>
+<p>想法非常簡單: 配置在 stack 上的變數, 在離開 scope 後一定會呼叫 destructor, 因此只要設計一系列的容器, 讓它們在 destructor 裡做回收行為, 就可以讓編譯器為我們回收資源. 而 C++11 的 smart pointer 並不只是自動化的 new/delete 容器, 由於其 allocator/deleter 可自訂, programmer 實際上可用它來管理任何種類的資源.</p>
+<h3>Strong Reference</h3>
+<p>在 C++ 裡: <code>std::shared_ptr</code> 即是使用 strong reference, 也是最常被用到的 smart pointer. 用法如下:</p>
+<div class="code"><pre><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">sp</span><span class="p">(</span><span class="k">new</span> <span class="n">Object</span><span class="p">);</span>
+<span class="n">sp</span><span class="p">.</span><span class="n">get</span><span class="p">();</span>                        <span class="c1">// get raw pointer</span>
+<span class="n">sp</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span>                      <span class="c1">// ref count -1, set to null pointer</span>
+<span class="n">sp</span><span class="p">.</span><span class="n">reset</span><span class="p">(</span><span class="k">new</span> <span class="n">Object</span><span class="p">);</span>            <span class="c1">// manage another pointer</span>
+<span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">sp2</span><span class="p">(</span><span class="n">sp</span><span class="p">);</span> <span class="c1">// ref count +1</span>
+</pre></div>
+
+
+<p>用同一個 pointer 建立兩個不同的 <code>std::shared_ptr</code> 是錯誤用法, 會造成一次以上的回收:</p>
+<div class="code"><pre><span class="n">Object</span> <span class="n">o</span> <span class="o">=</span> <span class="k">new</span> <span class="n">Object</span><span class="p">;</span>
+<span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">sp1</span><span class="p">(</span><span class="n">o</span><span class="p">);</span>
+<span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">sp2</span><span class="p">(</span><span class="n">o</span><span class="p">);</span> <span class="c1">// bad</span>
+</pre></div>
+
+
+<h3>Weak Reference</h3>
+<p>在 C++11, weak reference 對應的 smart pointer 是 <code>std::weak_ptr</code>. 前篇提到了 weak reference 可以用來解決 cyclic reference, 那麼是怎麼做到的呢? 很簡單, 因為 weak reference 不參與 reference counting, 也就是說它的生成, 複製, 銷毀都不會影響計數器, 自然也不會做任何回收的動作.
+那麼為什麼我們需要 weak reference, 而不是簡單地用 raw pointer 呢? 差別就在 weak reference 雖然不參與 reference counting, 但它仍然知道該 pointer 目前的計數器資訊, 這讓它可以確認資源是否已被回收, 並在需要時暫時轉換為 strong reference. 這在多緒環境時尤其重要:</p>
+<div class="code"><pre><span class="kt">void</span> <span class="nf">thread1</span> <span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// ...</span>
+    <span class="c1">// sp is a std::shared_ptr</span>
+    <span class="n">sp</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span> <span class="c1">// (1)</span>
+    <span class="c1">// ...</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">thread2</span> <span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// ...</span>
+    <span class="c1">// wp is a std::weak_ptr</span>
+    <span class="n">wp</span><span class="p">.</span><span class="n">get</span><span class="p">()</span> <span class="c1">// (2)</span>
+    <span class="c1">// ...</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>如果 <code>std::weak_ptr</code> 跟 <code>std::shared_ptr</code> 一樣只用 <code>get()</code> 取得 raw pointer, 那麼在上述的例子中, (1) 如果觸發了回收, 那麼 (2) 拿到的 pointer 就會因而腐敗. 因此 <code>std::weak_ptr</code> 必須要使用 <code>lock()</code> 函式取得一個 <code>std::shared_ptr</code>, 讓計數器暫時不歸零, 就可以避免這個狀況:</p>
+<div class="code"><pre><span class="p">{</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">sp</span> <span class="o">=</span> <span class="n">wp</span><span class="p">.</span><span class="n">lock</span><span class="p">();</span>
+    <span class="c1">// counter will not be 0 in this scope</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<h3>Strong Reference From This</h3>
+<p>考慮以下的二元樹節點實作:</p>
+<div class="code"><pre><span class="k">class</span> <span class="nc">Node</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">void</span> <span class="n">setParent</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">weak_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">p</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="kt">void</span> <span class="n">setLeft</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">l</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+        <span class="n">n</span><span class="o">-&gt;</span><span class="n">setParent</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="p">));</span>
+    <span class="p">}</span>
+    <span class="kt">void</span> <span class="n">setRight</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">r</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+        <span class="n">n</span><span class="o">-&gt;</span><span class="n">setParent</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="p">));</span>
+    <span class="p">}</span>
+<span class="nl">private:</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">weak_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">p</span><span class="p">;</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">l</span><span class="p">,</span> <span class="n">r</span><span class="p">;</span>
+<span class="p">};</span>
+</pre></div>
+
+
+<p>以上的程式片段犯了大忌: 直接使用 this 建立 <code>std::shared_ptr</code>, 導致離開該函式後會讓計數器馬上歸零, this 被意外地 delete.
+由於我們的確需要取得目前正在管理 this 的 <code>std::shared_ptr</code>, 這時我們需要使用 <code>std::enable_shared_from_this</code>. 繼承自 <code>std::enable_shared_from_this</code> 的類別, 可以使用 <code>shared_from_this()</code> 函式取得管理 this 的 <code>std::shared_ptr</code>. 實作原理基本上是儲存一個 <code>std::weak_ptr</code>, 外部建立 <code>std::shared_ptr</code> 時更新這個 <code>std::weak_ptr</code>, 呼叫 <code>shared_from_this()</code> 時再轉換回 <code>std::shared_ptr</code>. 用法如下:</p>
+<div class="code"><pre><span class="k">class</span> <span class="nc">Node</span><span class="o">:</span> <span class="k">public</span> <span class="n">std</span><span class="o">::</span><span class="n">enable_shared_from_this</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">void</span> <span class="n">setParent</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">weak_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">p</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="kt">void</span> <span class="n">setLeft</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">l</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+        <span class="n">n</span><span class="o">-&gt;</span><span class="n">setParent</span><span class="p">(</span><span class="k">this</span><span class="o">-&gt;</span><span class="n">shared_from_this</span><span class="p">());</span>
+    <span class="p">}</span>
+    <span class="kt">void</span> <span class="n">setRight</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">n</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">this</span><span class="o">-&gt;</span><span class="n">r</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+        <span class="n">n</span><span class="o">-&gt;</span><span class="n">setParent</span><span class="p">(</span><span class="k">this</span><span class="o">-&gt;</span><span class="n">shared_from_this</span><span class="p">());</span>
+    <span class="p">}</span>
+<span class="nl">private:</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">weak_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">p</span><span class="p">;</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Node</span><span class="o">&gt;</span> <span class="n">l</span><span class="p">,</span> <span class="n">r</span><span class="p">;</span>
+<span class="p">};</span>
+</pre></div>
+
+
+<h3>Unique Reference</h3>
+<p>在特殊情況下, 可能會需要確保同一時間只有一個物件有擁有權, 這時候 <code>std::unique_ptr</code> 就派上用場了. <code>std::unique_ptr</code> 是 <code>std::auto_ptr</code> 的改良版本. <code>std::auto_ptr</code> 的複製行為是「摧毀式複製」, 發生複製時會轉移資源的擁有權, 這使得它無法被用於標準容器, 並且在作為參數傳入函式時, 會意外地被轉移擁有權, 並在函式結束時觸發回收:</p>
+<div class="code"><pre><span class="kt">void</span> <span class="nf">f1</span> <span class="p">()</span> <span class="p">{</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">auto_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">a</span><span class="p">(</span><span class="k">new</span> <span class="n">Object</span><span class="p">);</span>
+    <span class="c1">// ownership moved into f2</span>
+    <span class="n">f2</span><span class="p">(</span><span class="n">a</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">f2</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">auto_ptr</span><span class="o">&lt;</span><span class="n">Object</span><span class="o">&gt;</span> <span class="n">b</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// destructs b and delete pointee</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p><code>std::unique_ptr</code> 改良了這點, 它不具有 copy 語意, 但具有 move 語意. 需要複製時必須要明確使用 <code>std::move</code> 轉移擁有權.</p></div>
+            </div>
+        </div>
+    
+        <div class="post">
+            <h1 class="title"><a href="posts/garbage-collection-1.html">Garbage Collection (1)</a></h1>
+            <div class="meta">
+                <div class="authordate">
+                    <time class="timeago" datetime="2012-07-15T21:41:12+08:00">2012-07-15 21:41</time>
+                </div>
+                <div class="stats">
+                
+                    
+    
+        
+    <p>
+    
+        <a href="posts/garbage-collection-1.html#disqus_thread" data-disqus-identifier="cache/posts/garbage-collection-1.html">Comments</a>
+    
+
+    
+
+                
+                </p></div>
+                
+    
+
+            </div>
+            <div class="body">
+                <div><p>這篇只是介紹比較知名的方法，預計之後還會再發一兩篇討論 C++/Qt 的回收手法。</p>
+<h3>Reference Counting</h3>
+<p>C/C++ 裡最常被使用的方式, 也有部分 GC 演算法會混合 reference counting. 其原理是每個物件都有一個計數器, 記錄目前有多少其他物件指向它. 第一次建立時計數器是 1, 每次複製時計數器加 1, 每少一個物件指向它就減 1, 如果計數器降到 0 就代表此物件不需要存在, 這時它會被刪除. 圖解如下:</p>
+<p><img alt="" src="https://lh4.googleusercontent.com/-NWnj-veDuxc/UALDHo-fpSI/AAAAAAAAAi8/DDOY0h2KqxM/s800/rc1.PNG"></p>
+<p>但 reference counting 有一個重大的缺點, 就是在有 cyclic reference 的狀況下, 它無法回收物件. 圖例:</p>
+<p><img alt="" src="https://lh3.googleusercontent.com/-y-Ek_yWpUNM/UALE5Pp89yI/AAAAAAAAAjU/smqBu3rT010/s800/rc3.PNG"></p>
+<p>變數 c 若因為某些原因而需要持有 b (比方說要保存 parent-child 關係), 就形成了 cyclic reference, 此時就算變數 a 不再指向它們, 但因為計數器不會歸零, 它們永遠無法被回收. 圖例:</p>
+<p><img alt="" src="https://lh4.googleusercontent.com/-wqBg5DlOsX4/UALE5Nl9CAI/AAAAAAAAAjQ/rfllXgIcrrA/s800/rc2.PNG"></p>
+<p>要解決這個問題可以使用 weak reference counting (後述), 但因為它的使用方式與 strong reference counting 不同, programmer 必須要自行檢查是否會造成 cyclic reference, 再視情況改用 weak reference. 然而很多時候 cyclic reference 是很難被發現的, 對 programmer 來說是一項不小的負擔.</p>
+<h3>JavaScript</h3>
+<p>JavaScript 的 closure 常會意外地造成 cyclic reference, 以下是其中一個簡單的例子:</p>
+<div class="code"><pre><span class="nb">window</span><span class="p">.</span><span class="nx">onload</span> <span class="o">=</span> <span class="kd">function</span> <span class="p">()</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="nx">tmp</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nx">getElementById</span><span class="p">(</span><span class="s1">'...'</span><span class="p">);</span>
+    <span class="nx">tmp</span><span class="p">.</span><span class="nx">onclick</span> <span class="o">=</span> <span class="kd">function</span> <span class="p">()</span> <span class="p">{</span>
+        <span class="c1">// tmp may reference here because closure</span>
+    <span class="p">};</span>
+<span class="p">};</span>
+</pre></div>
+
+
+<p>通常在 DOM event handler 中經常會出現這種寫法, 畢竟如果不使用 closure, 寫法會變得很不自然. 所幸目前大部分的 JavaScript engine 都已經使用 mark and sweep (後述), 基本上也不太需要過於擔心這問題 ... 除了早期的 IE 以外(講明一點, 在 Windows XP 上的 IE 版本似乎都還在用 reference counting).</p>
+<h3>Mark and Sweep</h3>
+<p>近代的 GC 有許多都是以 mark and sweep 為主，再混合一點變型(如 Python 也有用上 reference counting). Mark and sweep 的想法也很簡單: 首先走訪目前存在的所有變數, 把碰得到的物件標記起來，此為 mark; 接著檢查所有物件, 把剛剛沒被標記的物件回收, 有被標記的物件清除標記以供下回使用, 此為 sweep. 寫成演算法即:</p>
+<div class="code"><pre><span class="k">def</span> <span class="nf">mark</span><span class="p">(</span><span class="n">variables</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">variables</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">v</span><span class="o">.</span><span class="n">marked</span><span class="p">:</span>
+            <span class="n">v</span><span class="o">.</span><span class="n">marked</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="n">mark</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">children</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">sweep</span><span class="p">(</span><span class="n">objects</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">objects</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">o</span><span class="o">.</span><span class="n">marked</span><span class="p">:</span>
+            <span class="n">o</span><span class="o">.</span><span class="n">marked</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">del</span> <span class="n">o</span>
+</pre></div>
+
+
+<p>由於 mark and sweep 是直接走訪所有的變數及物件, 不像 reference counting 只知道 parent-child 的關係, 因此它不受 cyclic reference 的影響. 但也因此, C/C++ 很難直接原生支援, 因為它經常需要在 memory pool 上再做一些額外處理. 另外，在 mark and sweep 執行時, 為了 thread safety, 通常會先暫停所有的 thread, 這對效能可能是另一項衝擊.</p>
+<p>就算有 VM 可以幫 programmer 做資源回收, 但「資源」並不只限於 heap. 對於 sockets, IO devices, shared memory 等外部資源, VM 還是無法完全幫 programmer 監視所有資源的使用, 因此 client 還是有必要手動呼叫回收函式(如 close(), release() 等).</p></div>
+            </div>
+        </div>
+    
+    
+    
+
+    
+    
+        
+    
+       <script>var disqus_shortname="legnaleurc";(function(){var a=document.createElement("script");a.async=true;a.src="//"+disqus_shortname+".disqus.com/count.js";(document.getElementsByTagName("head")[0]||document.getElementsByTagName("body")[0]).appendChild(a)}());</script>
+    
+
+    
+
+    
+    
+
+
+            Contents © 2014         <a href="mailto:legnaleurc@gmail.com">Wei-Cheng Pan</a> - Powered by         <a href="http://getnikola.com" rel="nofollow">Nikola</a>         
+<p>
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/deed.en_US">
+<img alt="Creative Commons License" style="border-width:0" src="http://i.creativecommons.org/l/by-sa/4.0/88x31.png">
+</a>
+<br>
+This work is licensed under a
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/deed.en_US">
+Creative Commons Attribution-ShareAlike 4.0 International License
+</a>.
+</p>
+
+            
+    
+<!-- Social buttons -->
+<div id="addthisbox" class="addthis_toolbox addthis_peekaboo_style addthis_default_style addthis_label_style addthis_32x32_style">
+<a class="addthis_button_more">Share</a>
+<ul><li><a class="addthis_button_facebook"></a>
+</li><li><a class="addthis_button_google_plusone_share"></a>
+</li><li><a class="addthis_button_linkedin"></a>
+</li><li><a class="addthis_button_twitter"></a>
+</li></ul>
+</div>
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-4f7088a56bb93798"></script>
+<!-- End of social buttons -->
+
+
+        </div>
+    </section>
+    
+    
+        
+            <script src="assets/js/all-nocdn.js" type="text/javascript"></script>
+        
+    
+
+    
+        <script type="text/javascript">
+            $(function(){
+                $('.timeago').timeago();
+            });
+        </script>
+    
+    
+</body>
+</html>
