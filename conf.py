@@ -235,6 +235,7 @@ CREATE_MONTHLY_ARCHIVE = True
 # plugin (`nikola install_plugin ping`).
 # To do manual deployment, set it to []
 DEPLOY_COMMANDS = [
+    "rm -rf output",
     "git checkout _",
     "git merge develop -m _",
     "nikola build",
